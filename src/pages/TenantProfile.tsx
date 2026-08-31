@@ -1,8 +1,17 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Phone, MessageCircle, DollarSign, FileText, Pencil, Trash2 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  ArrowLeft,
+  Phone,
+  MessageCircle,
+  DollarSign,
+  FileText,
+  Pencil,
+  Trash2,
+  LogOut,
+} from "lucide-react";
 import Sidebar from "@/components/dashboard/Sidebar";
 import Header from "@/components/dashboard/Header";
 import TenantOverview from "@/components/tenants/TenantOverview";
@@ -13,6 +22,19 @@ import TenantActivity from "@/components/tenants/TenantActivity";
 import SendWhatsAppModal from "@/components/tenants/SendWhatsAppModal";
 import EditTenantModal from "@/components/tenants/EditTenantModal";
 import DeleteTenantDialog from "@/components/tenants/DeleteTenantDialog";
+import VacateTenantModal from "@/components/tenants/VacateTenantModal";
+import CollectRentModal from "@/components/rent/CollectRentModal";
+import { toast } from "sonner";
+import {
+  fetchTenantPaymentHistoryRaw,
+  toPaymentRecord,
+  toApiPaymentMethod,
+  collectRent,
+  recordPartialPayment,
+  downloadReceiptPdf,
+  PAYMENT_WRITE_INVALIDATIONS,
+} from "@/lib/payments";
+import type { PaymentMethod, PaymentRecord } from "@/components/rent/rentData";
 import { fetchTenant, inr, formatDate, tenureLabel, totalPaid, paymentStatusOf } from "@/lib/tenants";
 
 function initials(name: string): string {
@@ -54,6 +76,69 @@ export default function TenantProfile() {
   const [whatsappOpen, setWhatsappOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [vacateOpen, setVacateOpen] = useState(false);
+  const [collectTarget, setCollectTarget] = useState<PaymentRecord | null>(null);
+  const queryClient = useQueryClient();
+
+  // Real payment rows for this tenant — used by Collect Rent and the receipt
+  // PDF download so neither action has to invent data or endpoints.
+  const { data: tenantPayments } = useQuery({
+    queryKey: ["payments", "history", id],
+    queryFn: () => fetchTenantPaymentHistoryRaw(id as string),
+    enabled: Boolean(id),
+  });
+
+  const paymentRecords = (tenantPayments ?? []).map(toPaymentRecord);
+  const outstandingPayment = paymentRecords.find((p) => p.outstanding > 0) ?? null;
+  const receiptPayment = (tenantPayments ?? []).find(
+    (p) => p.receiptNumber && Number(p.paidAmount ?? 0) > 0,
+  );
+
+  const handleCollectRent = () => {
+    if (!outstandingPayment) {
+      toast.info("No pending rent for this tenant right now.");
+      return;
+    }
+    setCollectTarget(outstandingPayment);
+  };
+
+  const handleCollected = async (
+    record: PaymentRecord,
+    amount: number,
+    payMethod: PaymentMethod,
+    reference: string,
+    notes: string,
+  ) => {
+    const body = {
+      tenantId: record.tenantId,
+      month: record.month,
+      year: record.year,
+      amountPaid: amount,
+      paymentMethod: toApiPaymentMethod(payMethod),
+      referenceNumber: reference,
+      notes,
+    };
+    if (amount >= record.outstanding) await collectRent(body);
+    else await recordPartialPayment(body);
+    await Promise.all(
+      PAYMENT_WRITE_INVALIDATIONS.map((queryKey) =>
+        queryClient.invalidateQueries({ queryKey: [...queryKey] }),
+      ),
+    );
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!receiptPayment) {
+      toast.info("No receipt available yet — collect a rent payment first.");
+      return;
+    }
+    try {
+      await downloadReceiptPdf(receiptPayment.id, receiptPayment.receiptNumber as string);
+      toast.success("Receipt PDF downloaded.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not download the receipt PDF.");
+    }
+  };
 
   const { data: tenant, isLoading } = useQuery({
     queryKey: ["tenant", id],
@@ -166,7 +251,10 @@ export default function TenantProfile() {
 
                 {/* Action Buttons */}
                 <div className="mt-6 border-t border-ink-100 pt-6 flex flex-wrap gap-3">
-                  <button className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700">
+                  <button
+                    onClick={handleCollectRent}
+                    className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700"
+                  >
                     <DollarSign className="h-4 w-4" />
                     Collect Rent
                   </button>
@@ -184,9 +272,19 @@ export default function TenantProfile() {
                     <MessageCircle className="h-4 w-4" />
                     WhatsApp
                   </button>
-                  <button className="flex items-center gap-2 rounded-lg border border-ink-200 bg-white px-4 py-2.5 text-sm font-medium text-ink-700 hover:bg-ink-50">
+                  <button
+                    onClick={handleDownloadPdf}
+                    className="flex items-center gap-2 rounded-lg border border-ink-200 bg-white px-4 py-2.5 text-sm font-medium text-ink-700 hover:bg-ink-50"
+                  >
                     <FileText className="h-4 w-4" />
                     PDF
+                  </button>
+                  <button
+                    onClick={() => setVacateOpen(true)}
+                    className="flex items-center gap-2 rounded-lg border border-ink-200 bg-white px-4 py-2.5 text-sm font-medium text-ink-700 hover:bg-ink-50"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Mark Vacating
                   </button>
                   <button
                     onClick={() => setEditOpen(true)}
@@ -273,6 +371,20 @@ export default function TenantProfile() {
         tenantId={tenant.id}
         tenantName={tenant.fullName}
         tenantPhone={tenant.phone}
+      />
+      <CollectRentModal
+        open={collectTarget !== null}
+        payment={collectTarget}
+        onClose={() => setCollectTarget(null)}
+        onCollected={handleCollected}
+        onToast={(message) => toast.success(message)}
+      />
+      <VacateTenantModal
+        open={vacateOpen}
+        onClose={() => setVacateOpen(false)}
+        tenantId={tenant.id}
+        tenantName={tenant.fullName}
+        securityDeposit={tenant.securityDeposit ?? 0}
       />
       <EditTenantModal open={editOpen} onClose={() => setEditOpen(false)} tenant={tenant} />
       <DeleteTenantDialog
