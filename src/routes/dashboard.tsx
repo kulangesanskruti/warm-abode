@@ -4,7 +4,13 @@ import { requireAuth } from "@/lib/guards";
 
 export const Route = createFileRoute("/dashboard")({
   ssr: false,
-  beforeLoad: requireAuth,
+  // `/dashboard?demo=true` is the public "Try Live Demo" entry point and must
+  // stay reachable without a session. Every other dashboard visit is guarded.
+  beforeLoad: ({ location }) => {
+    const demo = (location.search as Record<string, unknown> | undefined)?.["demo"];
+    if (demo === "true" || demo === true) return;
+    requireAuth();
+  },
   head: () => ({
     meta: [
       { title: "Control Center — StayHub" },
