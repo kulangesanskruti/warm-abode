@@ -5,6 +5,7 @@ import { ArrowLeft, Wallet, Users, FileText, Share2, AlertCircle } from "lucide-
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/api";
 import { mapRoom, formatCurrency, type ApiRoom } from "@/lib/rooms";
+import { rentStatusQuery } from "@/lib/payments";
 import Sidebar from "@/components/dashboard/Sidebar";
 import Header from "@/components/dashboard/Header";
 import RoomMap from "@/components/rooms/RoomMap";
@@ -22,7 +23,8 @@ export default function RoomDetails() {
     queryFn: () => apiRequest<ApiRoom>(`/rooms/${id}`),
   });
 
-  const room = data ? mapRoom(data) : null;
+  const rentStatusByTenant = useQuery(rentStatusQuery).data;
+  const room = data ? mapRoom(data, rentStatusByTenant) : null;
   const monthlyIncome = data?.monthlyRevenue
     ? formatCurrency(data.monthlyRevenue)
     : (room?.monthlyIncome ?? formatCurrency(0));

@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/api";
 import { AppLink as Link } from "@/components/ui/AppLink";
 import { mapRoom, type RoomsListResponse } from "@/lib/rooms";
+import { rentStatusQuery } from "@/lib/payments";
 import RoomCard from "@/components/rooms/RoomCard";
 import AddRoomModal from "@/components/rooms/AddRoomModal";
 
@@ -41,7 +42,9 @@ export default function PropertyRooms({ propertyId }: { propertyId?: string }) {
       ),
   });
 
-  const rooms = (data?.rooms ?? []).map(mapRoom);
+  const rentStatusByTenant = useQuery(rentStatusQuery).data;
+
+  const rooms = (data?.rooms ?? []).map((room) => mapRoom(room, rentStatusByTenant));
 
   return (
     <div>

@@ -15,6 +15,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/api";
 import { mapRoom, type RoomsListResponse } from "@/lib/rooms";
+import { rentStatusQuery } from "@/lib/payments";
 import Sidebar from "@/components/dashboard/Sidebar";
 import Header from "@/components/dashboard/Header";
 import RoomCard from "@/components/rooms/RoomCard";
@@ -89,7 +90,9 @@ export default function Rooms() {
   const isLoading = propertiesQuery.isLoading || (Boolean(propertyId) && roomsLoading);
   const loadError = propertiesQuery.error ?? error;
 
-  const rooms = (data?.rooms ?? []).map(mapRoom);
+  const rentStatusByTenant = useQuery(rentStatusQuery).data;
+
+  const rooms = (data?.rooms ?? []).map((room) => mapRoom(room, rentStatusByTenant));
 
   // Search/status handled by the API; bed-level filters are derived client-side.
   const filteredRooms = rooms.filter((room) => {
