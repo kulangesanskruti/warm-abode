@@ -18,16 +18,23 @@ interface AppLinkProps {
  * path (including an optional query string) so feature components can stay
  * simple.
  */
-export function AppLink({ to, className, children, ...rest }: AppLinkProps) {
+export function AppLink({ to, params, className, children, ...rest }: AppLinkProps) {
   const [pathname, query] = to.split("?");
   const search = query ? Object.fromEntries(new URLSearchParams(query).entries()) : undefined;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  /* eslint-disable @typescript-eslint/no-explicit-any */
   return (
-    <Link to={pathname as any} search={search as any} className={className} {...rest}>
+    <Link
+      to={pathname as any}
+      search={search as any}
+      params={params as any}
+      className={className}
+      {...rest}
+    >
       {children}
     </Link>
   );
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 }
 
 export default AppLink;
