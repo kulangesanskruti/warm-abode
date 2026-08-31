@@ -202,3 +202,14 @@ export async function uploadTenantDocument(
 
 /** Tenant notes are a single stored text field on the tenant record. */
 export const saveTenantNotes = (id: string, notes: string) => updateTenant(id, { notes });
+
+export type VacateTenantBody = {
+  vacatingDate: string;
+  reason: string;
+  securityDepositReturned: number;
+  finalNotes?: string;
+};
+
+/** Existing backend endpoint: POST /api/v1/tenants/:id/vacate */
+export const vacateTenant = (id: string, body: VacateTenantBody) =>
+  apiRequest<{ tenant: ApiTenantDetail }>(`/tenants/${id}/vacate`, { method: "POST", body });
