@@ -158,12 +158,13 @@ export const TENANT_WRITE_INVALIDATIONS = [
   ["dashboard"],
 ] as const;
 
+// Must mirror the backend prisma DocumentType enum exactly.
 export const DOCUMENT_TYPES = [
   "AADHAAR",
-  "PAN",
+  "PASSPORT",
+  "DRIVER_LICENSE",
   "RENTAL_AGREEMENT",
-  "PHOTO",
-  "POLICE_VERIFICATION",
+  "UTILITY_BILL",
   "OTHER",
 ] as const;
 
