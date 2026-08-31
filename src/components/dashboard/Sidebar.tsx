@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { AppLink as Link } from "@/components/ui/AppLink";
+import Logo from "@/components/ui/Logo";
 import { clearSession } from "@/lib/api";
 import { useCurrentUser, getInitials } from "@/lib/profile";
 import {
