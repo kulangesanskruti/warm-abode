@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 interface AppLinkProps {
   to: string;
+  params?: Record<string, string>;
   className?: string;
   children?: ReactNode;
   onClick?: () => void;
