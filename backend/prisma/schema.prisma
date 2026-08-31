@@ -1,0 +1,733 @@
+// StayHub Production Database Schema
+// PostgreSQL with Prisma ORM
+// Designed for a scalable SaaS property management platform
+// Follows 3NF normalization and industry best practices
+
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum UserRole {
+  OWNER
+  MANAGER
+  ACCOUNTANT
+}
+
+enum PropertyStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum RoomStatus {
+  AVAILABLE
+  PARTIALLY_OCCUPIED
+  FULL
+  MAINTENANCE
+}
+
+enum BedStatus {
+  VACANT
+  OCCUPIED
+  MAINTENANCE
+}
+
+enum TenantStatus {
+  ACTIVE
+  VACATING
+  LEFT
+}
+
+enum PaymentStatus {
+  PAID
+  PENDING
+  OVERDUE
+  PARTIAL
+  CANCELLED
+  REFUNDED
+}
+
+enum MaintenancePriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum NotificationType {
+  PAYMENT
+  MAINTENANCE
+  TENANT
+  ROOM
+  SYSTEM
+}
+
+enum DocumentType {
+  AADHAAR
+  PASSPORT
+  DRIVER_LICENSE
+  RENTAL_AGREEMENT
+  UTILITY_BILL
+  OTHER
+}
+
+enum WhatsAppMessageType {
+  PAYMENT_REMINDER
+  MAINTENANCE_ALERT
+  TENANT_NOTIFICATION
+  RECEIPT
+  OTHER
+}
+
+enum WhatsAppStatus {
+  SENT
+  DELIVERED
+  FAILED
+  READ
+}
+
+enum ReportType {
+  RENT_COLLECTION
+  PROPERTY_PERFORMANCE
+  ROOM_OCCUPANCY
+  TENANT_REPORT
+  PENDING_RENT
+  OVERDUE_RENT
+  MONTHLY_FINANCIAL
+  ANNUAL_FINANCIAL
+  CASHBOOK
+  PAYMENT_HISTORY
+  BUSINESS_SUMMARY
+}
+
+// ============================================
+// USER MODEL
+// ============================================
+
+model User {
+  id              String   @id @default(cuid())
+  fullName        String
+  email           String   @unique
+  phone           String   @unique
+  passwordHash    String
+  role            UserRole @default(OWNER)
+  profilePhoto    String?
+  isVerified      Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  timezone          String   @default("UTC")
+
+  // Relations
+  properties        Property[]
+  notifications     Notification[]
+  reports           Report[]
+  activityLogs      ActivityLog[]
+  fileAssets        FileAsset[]
+  fileDownloads     FileDownload[]
+  whatsappTemplates WhatsAppTemplate[]
+  whatsappLogs     WhatsAppLog[]
+  whatsappAnalyticsEvents WhatsAppAnalyticsEvent[]
+  backgroundJobs   BackgroundJob[]
+
+  @@index([email])
+  @@index([phone])
+  @@map("users")
+}
+
+// ============================================
+// PROPERTY MODEL
+// ============================================
+
+model Property {
+  id              String   @id @default(cuid())
+  ownerId         String
+  propertyName    String
+  propertyType    String
+  address         String
+  city            String
+  state           String
+  pincode         String
+  country         String
+  description     String?
+  imageUrl        String?
+  totalFloors     Int
+  status          PropertyStatus @default(ACTIVE)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+
+  // Relations
+  owner           User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  rooms           Room[]
+  tenants         Tenant[]
+  payments        Payment[]
+  receipts        Receipt[]
+  reports         Report[]
+  whatsappLogs    WhatsAppLog[]
+  maintenanceReqs Maintenance[]
+  fileAssets      FileAsset[]
+
+  @@index([ownerId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("properties")
+}
+
+// ============================================
+// ROOM MODEL
+// ============================================
+
+model Room {
+  id              String   @id @default(cuid())
+  propertyId      String
+  roomNumber      String
+  floor           Int
+  capacity        Int
+  occupiedBeds    Int      @default(0)
+  rentPerBed      Decimal  @db.Decimal(10, 2)
+  status          RoomStatus @default(AVAILABLE)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+
+  // Relations
+  property        Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  beds            Bed[]
+  tenants         Tenant[]
+  payments        Payment[]
+  receipts        Receipt[]
+  maintenanceReqs Maintenance[]
+
+  @@index([propertyId])
+  @@index([status])
+  @@unique([propertyId, roomNumber])
+  @@index([deletedAt])
+  @@map("rooms")
+}
+
+// ============================================
+// BED MODEL
+// ============================================
+
+model Bed {
+  id              String   @id @default(cuid())
+  roomId          String
+  bedNumber       String
+  status          BedStatus @default(VACANT)
+  currentTenantId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  room            Room      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  tenant          Tenant?   @relation("BedCurrentTenant", fields: [currentTenantId], references: [id], onDelete: SetNull)
+  tenants         Tenant[]  @relation("BedTenantHistory")
+  payments        Payment[]
+  receipts        Receipt[]
+
+  @@index([roomId])
+  @@index([currentTenantId])
+  @@index([status])
+  @@unique([roomId, bedNumber])
+  @@map("beds")
+}
+
+// ============================================
+// TENANT MODEL
+// ============================================
+
+model Tenant {
+  id              String   @id @default(cuid())
+  propertyId      String
+  roomId          String
+  bedId           String
+  fullName        String
+  phone           String   @unique
+  email           String   @unique
+  gender          String
+  occupation      String?
+  aadhaarNumber   String?  @unique
+  emergencyContact String
+  photo           String?
+  photoUrl        String?
+  dateOfBirth     DateTime?
+  emergencyPhone  String?
+  permanentAddress String?
+  moveInDate      DateTime
+  expectedVacateDate DateTime?
+  actualVacateDate DateTime?
+  securityDeposit Decimal  @db.Decimal(10, 2)
+  monthlyRent     Decimal  @db.Decimal(10, 2)
+  status          TenantStatus @default(ACTIVE)
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+
+  // Relations
+  property        Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  room            Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  bed             Bed      @relation("BedTenantHistory", fields: [bedId], references: [id], onDelete: Cascade)
+  currentBeds     Bed[]    @relation("BedCurrentTenant")
+  payments        Payment[]
+  receipts        Receipt[]
+  whatsappLogs    WhatsAppLog[]
+  documents       Document[]
+  fileAssets      FileAsset[]
+
+  @@index([propertyId])
+  @@index([roomId])
+  @@index([phone])
+  @@index([email])
+  @@index([aadhaarNumber])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("tenants")
+}
+
+// ============================================
+// PAYMENT MODEL
+// ============================================
+
+model Payment {
+  id                String   @id @default(cuid())
+  tenantId          String
+  propertyId        String
+  roomId            String
+  bedId             String
+  month             Int
+  year              Int
+  rentAmount        Decimal  @db.Decimal(10, 2)
+  paidAmount        Decimal  @db.Decimal(10, 2) @default(0)
+  outstandingAmount Decimal  @db.Decimal(10, 2)
+  lateFee           Decimal  @db.Decimal(10, 2) @default(0)
+  discount          Decimal  @db.Decimal(10, 2) @default(0)
+  paymentMethod     String   @default("CASH")
+  transactionReference String?
+  paymentDate       DateTime?
+  // The actual calendar due date for this tenant's rent in this specific
+  // billing month/year (derived from the tenant's move-in-day anniversary,
+  // clamped to the length of the month). Persisted at rent-generation time
+  // so overdue detection is a simple, stable comparison against "now"
+  // instead of being recomputed (and potentially drifting) on every read.
+  dueDate           DateTime?
+  status            PaymentStatus @default(PENDING)
+  receiptNumber     String?  @unique
+  notes             String?
+  createdAt         DateTime @default(now())
+
+  // Relations
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  property          Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  room              Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  bed               Bed      @relation(fields: [bedId], references: [id], onDelete: Cascade)
+  // One rent-for-month record can be settled across several installments
+  // (a partial payment now, the remainder later); each collection call
+  // writes its own receipt, so this must be one-to-many, not one-to-one.
+  // (Was `Receipt?` with a @@unique on Receipt.paymentId, which made the
+  // second payment collected against the same month's rent fail with a
+  // unique-constraint violation on receipt creation.)
+  receipts          Receipt[]
+  activityLogs      PaymentActivityLog[]
+  whatsappLogs      WhatsAppLog[]
+
+  @@index([tenantId])
+  @@index([propertyId])
+  @@index([roomId])
+  @@index([bedId])
+  @@index([paymentDate])
+  @@index([receiptNumber])
+  @@index([status])
+  @@index([dueDate])
+  @@unique([tenantId, month, year])
+  @@map("payments")
+}
+
+// ============================================
+// RECEIPT MODEL
+// ============================================
+
+model Receipt {
+  id              String   @id @default(cuid())
+  receiptNumber   String   @unique
+  paymentId       String
+  tenantId        String
+  propertyId      String
+  roomId          String
+  bedId           String
+  amount          Decimal  @db.Decimal(10, 2)
+  paymentMethod   String
+  referenceNumber String?
+  generatedAt     DateTime @default(now())
+  metadata        Json     @default("{}")
+  createdAt       DateTime @default(now())
+  pdfUrl          String?
+
+  // Relations
+  payment         Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  property        Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  room            Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  bed             Bed      @relation(fields: [bedId], references: [id], onDelete: Cascade)
+
+  @@index([receiptNumber])
+  @@map("receipts")
+}
+
+// ============================================
+// PAYMENT ACTIVITY LOG MODEL
+// ============================================
+
+model PaymentActivityLog {
+  id            String   @id @default(cuid())
+  paymentId     String
+  activityType  String
+  metadata      Json
+  createdAt     DateTime @default(now())
+
+  // Relations
+  payment       Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@index([createdAt])
+  @@map("payment_activity_logs")
+}
+
+// ============================================
+// MAINTENANCE MODEL
+// ============================================
+
+model Maintenance {
+  id              String   @id @default(cuid())
+  propertyId      String
+  roomId          String?
+  reportedBy      String
+  title           String
+  description     String
+  priority        MaintenancePriority
+  status          String   @default("OPEN")
+  resolvedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  property        Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  room            Room?    @relation(fields: [roomId], references: [id], onDelete: SetNull)
+
+  @@index([propertyId])
+  @@index([roomId])
+  @@index([status])
+  @@index([priority])
+  @@map("maintenance_requests")
+}
+
+// ============================================
+// DOCUMENT MODEL
+// ============================================
+
+model Document {
+  id              String   @id @default(cuid())
+  tenantId        String
+  documentType    DocumentType
+  fileUrl         String
+  uploadedAt      DateTime @default(now())
+
+  // Relations
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([documentType])
+  @@map("documents")
+}
+
+// ============================================
+// NOTIFICATION MODEL
+// ============================================
+
+model Notification {
+  id              String   @id @default(cuid())
+  userId          String
+  title           String
+  message         String
+  type            NotificationType
+  entity          String?
+  entityId        String?
+  propertyId      String?
+  tenantId        String?
+  dedupeKey       String?
+  priority        Int      @default(0)
+  isRead          Boolean  @default(false)
+  readAt          DateTime?
+  metadata        Json     @default("{}")
+  createdAt       DateTime @default(now())
+
+  // Relations
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, isRead, createdAt])
+  @@index([propertyId])
+  @@index([tenantId])
+  @@index([entity, entityId])
+  @@map("notifications")
+}
+
+model BackgroundJob {
+  id              String   @id @default(cuid())
+  ownerId         String
+  queue           String
+  type            String
+  payload         Json     @default("{}")
+  idempotencyKey  String
+  state           String   @default("QUEUED")
+  attempts        Int      @default(0)
+  maxAttempts     Int      @default(3)
+  scheduledAt     DateTime @default(now())
+  startedAt       DateTime?
+  completedAt     DateTime?
+  lastError       String?
+  deadLetteredAt  DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  owner           User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, idempotencyKey])
+  @@index([queue, state, scheduledAt])
+  @@index([ownerId, state, createdAt])
+  @@map("background_jobs")
+}
+
+// ============================================
+// WHATSAPP LOG MODEL
+// ============================================
+
+model WhatsAppLog {
+  id              String   @id @default(cuid())
+  ownerId         String
+  tenantId        String?
+  propertyId      String?
+  paymentId       String?
+  phone           String
+  templateName    String?
+  messageType     String   @default("OTHER")
+  message         String
+  provider        String
+  providerMessageId String?
+  status          String   @default("QUEUED")
+  scheduledAt     DateTime?
+  queuedAt        DateTime @default(now())
+  sentAt          DateTime?
+  deliveredAt     DateTime?
+  readAt          DateTime?
+  error           String?
+  retryCount      Int      @default(0)
+  mediaUrl        String?
+  idempotencyKey  String?
+  metadata        Json     @default("{}")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  owner           User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  tenant          Tenant?   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  property        Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  payment         Payment?  @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  analyticsEvents WhatsAppAnalyticsEvent[]
+
+  @@index([ownerId, createdAt])
+  @@index([tenantId])
+  @@index([propertyId])
+  @@index([paymentId])
+  @@index([status, scheduledAt])
+  @@index([providerMessageId])
+  @@index([phone])
+  @@unique([ownerId, idempotencyKey])
+  @@map("whatsapp_logs")
+}
+
+// ============================================
+// WHATSAPP TEMPLATE MODEL
+// ============================================
+
+model WhatsAppTemplate {
+  id           String   @id @default(cuid())
+  ownerId      String
+  name         String
+  category     String
+  body         String
+  language     String   @default("en")
+  variables    Json     @default("[]")
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  owner        User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, name])
+  @@index([ownerId, isActive])
+  @@map("whatsapp_templates")
+}
+
+// ============================================
+// WHATSAPP ANALYTICS EVENT MODEL
+// ============================================
+
+model WhatsAppAnalyticsEvent {
+  id         String   @id @default(cuid())
+  ownerId    String
+  messageId  String?
+  eventType  String
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now())
+
+  owner      User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  message    WhatsAppLog? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId, createdAt])
+  @@index([messageId])
+  @@index([eventType])
+  @@map("whatsapp_analytics_events")
+}
+
+// ============================================
+// REPORT MODEL
+// ============================================
+
+model Report {
+  id              String      @id @default(cuid())
+  title           String
+  ownerId         String
+  propertyId      String?
+  reportType      ReportType
+  fileUrl         String
+  fileFormat      String
+  fileSize        Int?
+  generatedAt     DateTime    @default(now())
+  expiryDate      DateTime?
+
+  // Relations
+  owner           User        @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  property        Property?   @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId])
+  @@index([propertyId])
+  @@index([reportType])
+  @@map("reports")
+}
+
+// ============================================
+// ACTIVITY LOG MODEL
+// ============================================
+
+model ActivityLog {
+  id              String   @id @default(cuid())
+  userId          String
+  action          String
+  entity          String
+  entityId        String
+  description     String?
+  createdAt       DateTime @default(now())
+
+  // Relations
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([entity])
+  @@index([entityId])
+  @@index([createdAt])
+  @@map("activity_logs")
+}
+
+model FileAsset {
+  id             String   @id @default(cuid())
+  ownerId        String
+  originalName   String
+  safeName       String
+  provider       String
+  providerKey    String
+  url            String
+  size           Int
+  mimeType       String
+  extension      String
+  category       String
+  entityType     String
+  entityId       String?
+  propertyId     String?
+  tenantId       String?
+  checksum       String
+  expiresAt      DateTime?
+  isCover        Boolean  @default(false)
+  metadata       Json     @default("{}")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  owner          User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  property       Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  tenant         Tenant?   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  downloads      FileDownload[]
+
+  @@unique([ownerId, checksum])
+  @@index([ownerId, category, createdAt])
+  @@index([ownerId, entityType, entityId])
+  @@index([propertyId, isCover])
+  @@index([tenantId, expiresAt])
+  @@map("file_assets")
+}
+
+model FileDownload {
+  id         String   @id @default(cuid())
+  ownerId    String
+  fileId     String
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  owner      User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  file       FileAsset @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId, createdAt])
+  @@index([fileId, createdAt])
+  @@map("file_downloads")
+}
+
+// ============================================
+// SCHEDULER COORDINATION
+// ============================================
+
+/**
+ * Single-flight lease used by the in-process automation scheduler. A run
+ * acquires the row for its job name with an expiry; a second process (or a
+ * second tick that overlaps a slow run) fails to acquire it and exits
+ * instead of doing the work twice. The expiry means a crashed run
+ * self-heals on the next tick rather than deadlocking the job forever.
+ */
+model SchedulerLock {
+  name      String   @id
+  runId     String
+  lockedAt  DateTime @default(now())
+  expiresAt DateTime
+
+  @@map("scheduler_locks")
+}
+
+/**
+ * Idempotent progress marker: one row per completed unit of scheduled work
+ * (e.g. `monthly-rent:2026-09`). Lets a re-run skip finished work cheaply
+ * instead of re-scanning every tenant.
+ */
+model SchedulerRun {
+  key         String   @id
+  completedAt DateTime @default(now())
+  detail      Json     @default("{}")
+
+  @@map("scheduler_runs")
+}
