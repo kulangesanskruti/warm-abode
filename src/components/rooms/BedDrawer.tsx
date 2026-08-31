@@ -32,6 +32,8 @@ export default function BedDrawer({ bed, onClose }: { bed: Bed; onClose: () => v
         return "bg-success-50 text-success-700 border-success-200";
       case "due":
         return "bg-warning-50 text-warning-700 border-warning-200";
+      case "partial":
+        return "bg-warning-50 text-warning-700 border-warning-200";
       case "overdue":
         return "bg-danger-50 text-danger-700 border-danger-200";
       default:
@@ -137,8 +139,10 @@ export default function BedDrawer({ bed, onClose }: { bed: Bed; onClose: () => v
                 <p className="text-xs font-medium mb-2">Payment Status</p>
                 <p className="text-sm font-bold">
                   {bed.rentStatus === "paid" && "✓ Paid"}
-                  {bed.rentStatus === "due" && "⏰ Due Tomorrow"}
-                  {bed.rentStatus === "overdue" && "⚠ Overdue by 5 Days"}
+                  {bed.rentStatus === "due" && "⏰ Due"}
+                  {bed.rentStatus === "partial" && "◑ Partially paid"}
+                  {bed.rentStatus === "overdue" && "⚠ Overdue"}
+                  {bed.rentStatus === "unknown" && "— No rent record for this month"}
                 </p>
               </div>
 

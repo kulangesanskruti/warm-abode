@@ -30,6 +30,8 @@ export default function RoomMap({
         return "bg-success-50 border-success-200 hover:border-success-300";
       case "due":
         return "bg-warning-50 border-warning-200 hover:border-warning-300";
+      case "partial":
+        return "bg-warning-50 border-warning-200 hover:border-warning-300";
       case "overdue":
         return "bg-danger-50 border-danger-200 hover:border-danger-300";
       case "vacant":
@@ -47,8 +49,12 @@ export default function RoomMap({
         return "✓ Paid";
       case "due":
         return "⏰ Due";
+      case "partial":
+        return "◑ Partial";
       case "overdue":
         return "⚠ Overdue";
+      case "unknown":
+        return "— Rent status";
       case "vacant":
         return "+ Add";
       case "maintenance":
