@@ -1,0 +1,12 @@
+-- AlterEnum
+-- The application (room occupancy sync, room validators, and the frontend)
+-- has always treated PARTIALLY_OCCUPIED as a valid Room.status value for a
+-- room that has some but not all beds occupied, but the enum in the
+-- database was created with only AVAILABLE/FULL/MAINTENANCE. Every time a
+-- tenant moved into (or out of, or transferred between) a room that wasn't
+-- being fully filled/emptied by the change, syncRoomOccupancy tried to
+-- persist the "PARTIALLY_OCCUPIED" status and Postgres rejected it as an
+-- invalid enum value, rolling back the whole tenant transaction. This adds
+-- the missing enum value so the schema matches what the code (and docs)
+-- already expect.
+ALTER TYPE "RoomStatus" ADD VALUE 'PARTIALLY_OCCUPIED';
