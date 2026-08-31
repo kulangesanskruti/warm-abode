@@ -54,15 +54,38 @@ function bedStatus(status: string): "occupied" | "vacant" | "maintenance" {
   return "vacant";
 }
 
-export function mapBed(bed: ApiBed, rentPerBed: number) {
+/**
+ * Rent status for an occupied bed is NEVER inferred from occupancy — it comes
+ * from the payments API (see `fetchCurrentRentStatusByTenant`). When no
+ * payment row is known for the tenant we render a neutral "unknown" state
+ * instead of falsely claiming the rent is paid.
+ */
+export type BedRentStatus =
+  | "paid"
+  | "due"
+  | "overdue"
+  | "partial"
+  | "unknown"
+  | "vacant"
+  | "maintenance";
+
+export function mapBed(
+  bed: ApiBed,
+  rentPerBed: number,
+  rentStatusByTenant?: Record<string, BedRentStatus>,
+) {
   const status = bedStatus(bed.status);
+  const rentStatus: BedRentStatus =
+    status === "occupied"
+      ? ((bed.currentTenantId && rentStatusByTenant?.[bed.currentTenantId]) || "unknown")
+      : status;
   return {
     id: bed.bedNumber,
     name: `Bed ${bed.bedNumber}`,
     status,
     tenant: bed.currentTenantId,
     rent: formatCurrency(rentPerBed),
-    rentStatus: status === "occupied" ? "paid" : status,
+    rentStatus,
     avatar: status === "occupied" ? "👤" : null,
     phone: null,
     email: null,
@@ -72,7 +95,7 @@ export function mapBed(bed: ApiBed, rentPerBed: number) {
   };
 }
 
-export function mapRoom(room: ApiRoom) {
+export function mapRoom(room: ApiRoom, rentStatusByTenant?: Record<string, BedRentStatus>) {
   const beds = room.beds ?? [];
   const occupied = room.occupiedBeds ?? beds.filter((b) => b.status === "OCCUPIED").length;
   const vacant = room.vacantBeds ?? Math.max(room.capacity - occupied, 0);
@@ -104,6 +127,6 @@ export function mapRoom(room: ApiRoom) {
     pendingRent: formatCurrency(0),
     lastUpdated: formatRelative(room.updatedAt),
     status: uiStatus,
-    beds: beds.map((b) => mapBed(b, room.rentPerBed)),
+    beds: beds.map((b) => mapBed(b, room.rentPerBed, rentStatusByTenant)),
   };
 }
