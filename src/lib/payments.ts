@@ -317,3 +317,34 @@ export function receiptWhatsAppText(receipt: RentReceipt): string {
   lines.push(`— ${receipt.owner.fullName}`);
   return lines.join("\n");
 }
+
+/**
+ * Current-month rent status keyed by tenant id, sourced from the real
+ * payments API. Beds whose tenant has no payment row for the month are
+ * simply absent from the map, so callers fall back to a neutral state
+ * instead of assuming "paid".
+ */
+export async function fetchCurrentRentStatusByTenant(): Promise<
+  Record<string, "paid" | "due" | "overdue" | "partial">
+> {
+  const now = new Date();
+  const params = new URLSearchParams({
+    month: String(now.getMonth() + 1),
+    year: String(now.getFullYear()),
+    limit: "200",
+  });
+  const res = await fetchPayments(params.toString());
+  const map: Record<string, "paid" | "due" | "overdue" | "partial"> = {};
+  for (const payment of res.payments ?? []) {
+    if (!payment.tenantId) continue;
+    const ui = toUiStatus(payment);
+    map[payment.tenantId] = ui === "due-soon" ? "due" : ui;
+  }
+  return map;
+}
+
+/** Shared query options for the bed-level rent status lookup. */
+export const rentStatusQuery = {
+  queryKey: ["payments", "rent-status-by-tenant"] as const,
+  queryFn: fetchCurrentRentStatusByTenant,
+};
